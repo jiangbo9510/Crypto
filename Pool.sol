@@ -49,7 +49,7 @@ contract Pool is ERC20 {
             uint256 ethReserve = address(this).balance - msg.value;
             uint256 tokenReserve = IERC20(tokenAddress).balanceOf(address(this));
             uint256 tokenAmount = (msg.value * tokenReserve) / ethReserve;  //计算实际需要的token
-            require(_tokenAmount > tokenAmount,"EA");                       //提供的token不能小于实际需要的
+            require(_tokenAmount >= tokenAmount,"EA");                       //提供的token不能小于实际需要的
 
             IERC20 token = IERC20(tokenAddress);
             token.transferFrom(msg.sender, address(this), tokenAmount);     //扣减token
