@@ -9,48 +9,54 @@ import './libraries/SafeMath.sol';
 import './interfaces/IERC20.sol';
 import './interfaces/IWETH.sol';
 
+//这里只需要看Router02就行
 contract UniswapV2Router02 is IUniswapV2Router02 {
     using SafeMath for uint;
 
     address public immutable override factory;
     address public immutable override WETH;
 
+    //装饰函数，确保在要求的事件之前完成流动性添加
     modifier ensure(uint deadline) {
         require(deadline >= block.timestamp, 'UniswapV2Router: EXPIRED');
-        _;
+        _;  //这里执行实际的函数
     }
 
+    //WETH是ETH转换为ERC20格式的合约地址
     constructor(address _factory, address _WETH) public {
         factory = _factory;
         WETH = _WETH;
     }
 
     receive() external payable {
-        assert(msg.sender == WETH); // only accept ETH via fallback from the WETH contract
+        assert(msg.sender == WETH); // 只允许从WETH合约转入ETH
     }
 
-    // **** ADD LIQUIDITY ****
+    // 添加流动性需要的A、Btoken的数量
     function _addLiquidity(
         address tokenA,
         address tokenB,
-        uint amountADesired,
-        uint amountBDesired,
-        uint amountAMin,
-        uint amountBMin
+        uint amountADesired,    //前端计算得到的预期需要的A的数量
+        uint amountBDesired,    //前端计算得到的预期需要的B的数量
+        uint amountAMin,        //用户可以接受的最小的A的数量
+        uint amountBMin         //用户可以接受的最小的B的数量
     ) internal virtual returns (uint amountA, uint amountB) {
-        // create the pair if it doesn't exist yet
+        // Pair合约不存在，就创建之
         if (IUniswapV2Factory(factory).getPair(tokenA, tokenB) == address(0)) {
             IUniswapV2Factory(factory).createPair(tokenA, tokenB);
         }
+        //这里是先查询pair合约的A、B的余额
         (uint reserveA, uint reserveB) = UniswapV2Library.getReserves(factory, tokenA, tokenB);
-        if (reserveA == 0 && reserveB == 0) {
-            (amountA, amountB) = (amountADesired, amountBDesired);
+        if (reserveA == 0 && reserveB == 0) {//这是新合约，第一次添加流动性
+            (amountA, amountB) = (amountADesired, amountBDesired); //这里直接返回用户预期的值
         } else {
+            //a/x==b/y，a、b是按照余额等比例添加流动性的。这里先算A为基准，所需要的B。
             uint amountBOptimal = UniswapV2Library.quote(amountADesired, reserveA, reserveB);
-            if (amountBOptimal <= amountBDesired) {
+            if (amountBOptimal <= amountBDesired) {//用户提供的B足够，则此次添加需要用户预期的A的数量，等比例的B的数量
                 require(amountBOptimal >= amountBMin, 'UniswapV2Router: INSUFFICIENT_B_AMOUNT');
                 (amountA, amountB) = (amountADesired, amountBOptimal);
-            } else {
+            } else {//Btoken的数量不够
+                //则以B为基准，计算所需要的A的数量
                 uint amountAOptimal = UniswapV2Library.quote(amountBDesired, reserveB, reserveA);
                 assert(amountAOptimal <= amountADesired);
                 require(amountAOptimal >= amountAMin, 'UniswapV2Router: INSUFFICIENT_A_AMOUNT');
@@ -58,30 +64,36 @@ contract UniswapV2Router02 is IUniswapV2Router02 {
             }
         }
     }
+
+    //添加ERC20 token对的流动性
     function addLiquidity(
         address tokenA,
         address tokenB,
-        uint amountADesired,
-        uint amountBDesired,
+        uint amountADesired,    //前端计算得到的预期需要的A的数量
+        uint amountBDesired,    //前端计算得到的预期需要的B的数量
         uint amountAMin,
         uint amountBMin,
         address to,
         uint deadline
     ) external virtual override ensure(deadline) returns (uint amountA, uint amountB, uint liquidity) {
+        //计算所需要的A、B的数量
         (amountA, amountB) = _addLiquidity(tokenA, tokenB, amountADesired, amountBDesired, amountAMin, amountBMin);
-        address pair = UniswapV2Library.pairFor(factory, tokenA, tokenB);
-        TransferHelper.safeTransferFrom(tokenA, msg.sender, pair, amountA);
-        TransferHelper.safeTransferFrom(tokenB, msg.sender, pair, amountB);
-        liquidity = IUniswapV2Pair(pair).mint(to);
+        address pair = UniswapV2Library.pairFor(factory, tokenA, tokenB);   //这里是直接计算得到地址，不用合约调用，节约gas
+        TransferHelper.safeTransferFrom(tokenA, msg.sender, pair, amountA); //转入Atoken到pair合约
+        TransferHelper.safeTransferFrom(tokenB, msg.sender, pair, amountB); //转入Btoken到pair合约
+        liquidity = IUniswapV2Pair(pair).mint(to);  //调用pair到mint函数，获取流动性token
     }
+
+    //添加ETH和ERC20交易对的流动性
     function addLiquidityETH(
         address token,
-        uint amountTokenDesired,
-        uint amountTokenMin,
-        uint amountETHMin,
+        uint amountTokenDesired,    //前端计算得到的预期需要的token的数量
+        uint amountTokenMin,        //用户可以接受的最小的ETH的数量
+        uint amountETHMin,          //用户可以接受的最小的token的数量
         address to,
         uint deadline
     ) external virtual override payable ensure(deadline) returns (uint amountToken, uint amountETH, uint liquidity) {
+        //计算本次所需要的ETH和token的数量
         (amountToken, amountETH) = _addLiquidity(
             token,
             WETH,
@@ -91,32 +103,35 @@ contract UniswapV2Router02 is IUniswapV2Router02 {
             amountETHMin
         );
         address pair = UniswapV2Library.pairFor(factory, token, WETH);
-        TransferHelper.safeTransferFrom(token, msg.sender, pair, amountToken);
-        IWETH(WETH).deposit{value: amountETH}();
+        TransferHelper.safeTransferFrom(token, msg.sender, pair, amountToken);//token转账到pair合约
+        IWETH(WETH).deposit{value: amountETH}();    //ETH置换为WETH
         assert(IWETH(WETH).transfer(pair, amountETH));
-        liquidity = IUniswapV2Pair(pair).mint(to);
+        liquidity = IUniswapV2Pair(pair).mint(to);  //开始mint流动性token
         // refund dust eth, if any
-        if (msg.value > amountETH) TransferHelper.safeTransferETH(msg.sender, msg.value - amountETH);
+        if (msg.value > amountETH) TransferHelper.safeTransferETH(msg.sender, msg.value - amountETH);//多余的ETH退回
     }
 
-    // **** REMOVE LIQUIDITY ****
+    //移除ERC20token交易对的流动性
     function removeLiquidity(
         address tokenA,
         address tokenB,
-        uint liquidity,
-        uint amountAMin,
-        uint amountBMin,
+        uint liquidity,         //移除的流动性数量
+        uint amountAMin,        //最小获得的A的数量
+        uint amountBMin,        //最小获得的B的数量
         address to,
         uint deadline
     ) public virtual override ensure(deadline) returns (uint amountA, uint amountB) {
         address pair = UniswapV2Library.pairFor(factory, tokenA, tokenB);
-        IUniswapV2Pair(pair).transferFrom(msg.sender, pair, liquidity); // send liquidity to pair
-        (uint amount0, uint amount1) = IUniswapV2Pair(pair).burn(to);
+        IUniswapV2Pair(pair).transferFrom(msg.sender, pair, liquidity); //将流动性token转移到pair
+        (uint amount0, uint amount1) = IUniswapV2Pair(pair).burn(to);   //调用burn函数，得到收回的A、Btoken数量
         (address token0,) = UniswapV2Library.sortTokens(tokenA, tokenB);
-        (amountA, amountB) = tokenA == token0 ? (amount0, amount1) : (amount1, amount0);
+        (amountA, amountB) = tokenA == token0 ? (amount0, amount1) : (amount1, amount0);//返回的amount按照token地址的大小的顺序返回，这里要找到数量和token的对应关系
+        //检查A、B的数量是否满足用户的要求
         require(amountA >= amountAMin, 'UniswapV2Router: INSUFFICIENT_A_AMOUNT');
         require(amountB >= amountBMin, 'UniswapV2Router: INSUFFICIENT_B_AMOUNT');
     }
+
+    //溢出ETH、ERC20交易对的流动性
     function removeLiquidityETH(
         address token,
         uint liquidity,
@@ -135,9 +150,15 @@ contract UniswapV2Router02 is IUniswapV2Router02 {
             deadline
         );
         TransferHelper.safeTransfer(token, to, amountToken);
+        //流程和上述的ERC20交易对流动性移除一样，只不过这里多了WETH转换为ETH并转账给to地址
         IWETH(WETH).withdraw(amountETH);
         TransferHelper.safeTransferETH(to, amountETH);
     }
+
+    //removeLiquidityWithPermit函数的作用
+    //正常通过Router移除流动性，需要两步1、调用Pair合约授权流动性token给Router合约，2、调用Router合约移除流动性和相应的流动性token
+    //每次操作都需要两次交互，消费两笔gas
+    //通过permit操作，通过链外生成签名，跳过approve步骤，节约gas费用
     function removeLiquidityWithPermit(
         address tokenA,
         address tokenB,
@@ -149,10 +170,14 @@ contract UniswapV2Router02 is IUniswapV2Router02 {
         bool approveMax, uint8 v, bytes32 r, bytes32 s
     ) external virtual override returns (uint amountA, uint amountB) {
         address pair = UniswapV2Library.pairFor(factory, tokenA, tokenB);
-        uint value = approveMax ? uint(-1) : liquidity;
+        uint value = approveMax ? uint(-1) : liquidity; //approveMax==-1表示授权全部
+        //这里进行授权后，其余步骤和removeLiquidity一致
         IUniswapV2Pair(pair).permit(msg.sender, address(this), value, deadline, v, r, s);
         (amountA, amountB) = removeLiquidity(tokenA, tokenB, liquidity, amountAMin, amountBMin, to, deadline);
     }
+
+    //removeLiquidityETHWithPermit的作用
+    //和上述removeLiquidityWithPermit效果一致
     function removeLiquidityETHWithPermit(
         address token,
         uint liquidity,
@@ -165,6 +190,7 @@ contract UniswapV2Router02 is IUniswapV2Router02 {
         address pair = UniswapV2Library.pairFor(factory, token, WETH);
         uint value = approveMax ? uint(-1) : liquidity;
         IUniswapV2Pair(pair).permit(msg.sender, address(this), value, deadline, v, r, s);
+        //这里进行授权后，其余步骤和removeLiquidityETH一致
         (amountToken, amountETH) = removeLiquidityETH(token, liquidity, amountTokenMin, amountETHMin, to, deadline);
     }
 

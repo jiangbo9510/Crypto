@@ -16,7 +16,7 @@ contract UniswapV2ERC20 is IUniswapV2ERC20 {
     bytes32 public DOMAIN_SEPARATOR;
     // keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
     bytes32 public constant PERMIT_TYPEHASH = 0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9;
-    mapping(address => uint) public nonces;
+    mapping(address => uint) public nonces; //这里是记录授权的permit的次数，避免重放攻击
 
     event Approval(address indexed owner, address indexed spender, uint value);
     event Transfer(address indexed from, address indexed to, uint value);
@@ -78,12 +78,16 @@ contract UniswapV2ERC20 is IUniswapV2ERC20 {
         return true;
     }
 
+    //这里是允许任意用户，用owner用户的签名，来授权spender用户，转移token的权限
+    //base: https://github.com/makerdao/developerguides/blob/master/dai/how-to-use-permit-function/how-to-use-permit-function.md permit部分
+    //v、r、s代表owner对消息加密的结果
     function permit(address owner, address spender, uint value, uint deadline, uint8 v, bytes32 r, bytes32 s) external {
         require(deadline >= block.timestamp, 'UniswapV2: EXPIRED');
         bytes32 digest = keccak256(
             abi.encodePacked(
                 '\x19\x01',
-                DOMAIN_SEPARATOR,
+                DOMAIN_SEPARATOR,   //链的ChainID、合约地址等，避免重放攻击，将交易重放在其他合约或者链
+                //PERMIT_TYPEHASH = keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)")
                 keccak256(abi.encode(PERMIT_TYPEHASH, owner, spender, value, nonces[owner]++, deadline))
             )
         );

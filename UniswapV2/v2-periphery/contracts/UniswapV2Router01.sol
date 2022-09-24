@@ -8,6 +8,8 @@ import './interfaces/IUniswapV2Router01.sol';
 import './interfaces/IERC20.sol';
 import './interfaces/IWETH.sol';
 
+
+//这里只需要看Router02就行，比01多了几个接口
 contract UniswapV2Router01 is IUniswapV2Router01 {
     address public immutable override factory;
     address public immutable override WETH;
