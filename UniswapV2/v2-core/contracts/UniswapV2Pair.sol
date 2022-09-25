@@ -155,7 +155,12 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
         emit Burn(msg.sender, amount0, amount1, to);
     }
 
-    // this low-level function should be called from a contract which performs important safety checks
+    // this low-level function should be called from a contract which performs important safety checks //意思是这个函数属于底层函数，调用方需要进行安全校验
+    //Param:
+    //  amount0Out:转换获得的token0的数量
+    //  amount1Out:转换获得的token1的数量
+    //  to:
+    //  data:
     function swap(uint amount0Out, uint amount1Out, address to, bytes calldata data) external lock {
         require(amount0Out > 0 || amount1Out > 0, 'UniswapV2: INSUFFICIENT_OUTPUT_AMOUNT');
         (uint112 _reserve0, uint112 _reserve1,) = getReserves(); // gas savings

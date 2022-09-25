@@ -111,7 +111,7 @@ contract UniswapV2Router02 is IUniswapV2Router02 {
         if (msg.value > amountETH) TransferHelper.safeTransferETH(msg.sender, msg.value - amountETH);//多余的ETH退回
     }
 
-    //移除ERC20token交易对的流动性
+    //移除ERC20token交易对的流动性，返回实际需要返还的A、Btoken的数量。这里没有实际的返还，对外的API都在后面
     function removeLiquidity(
         address tokenA,
         address tokenB,
@@ -149,6 +149,7 @@ contract UniswapV2Router02 is IUniswapV2Router02 {
             address(this),
             deadline
         );
+        //这里转账token
         TransferHelper.safeTransfer(token, to, amountToken);
         //流程和上述的ERC20交易对流动性移除一样，只不过这里多了WETH转换为ETH并转账给to地址
         IWETH(WETH).withdraw(amountETH);
@@ -194,7 +195,7 @@ contract UniswapV2Router02 is IUniswapV2Router02 {
         (amountToken, amountETH) = removeLiquidityETH(token, liquidity, amountTokenMin, amountETHMin, to, deadline);
     }
 
-    // **** REMOVE LIQUIDITY (supporting fee-on-transfer tokens) ****
+    //这个移除流动性的方法，主要是用于转账会扣减部分的token，实际到账的token不是传入的金额
     function removeLiquidityETHSupportingFeeOnTransferTokens(
         address token,
         uint liquidity,
@@ -212,10 +213,12 @@ contract UniswapV2Router02 is IUniswapV2Router02 {
             address(this),
             deadline
         );
-        TransferHelper.safeTransfer(token, to, IERC20(token).balanceOf(address(this)));
+        TransferHelper.safeTransfer(token, to, IERC20(token).balanceOf(address(this))); //将Router02合约的所有的token返还给用户
         IWETH(WETH).withdraw(amountETH);
-        TransferHelper.safeTransferETH(to, amountETH);
+        TransferHelper.safeTransferETH(to, amountETH);  //返还ETH给用户
     }
+
+    //和上一个一样，就是多了个授权的步骤
     function removeLiquidityETHWithPermitSupportingFeeOnTransferTokens(
         address token,
         uint liquidity,
@@ -234,19 +237,36 @@ contract UniswapV2Router02 is IUniswapV2Router02 {
     }
 
     // **** SWAP ****
-    // requires the initial amount to have already been sent to the first pair
+    // requires the initial amount to have already been sent to the first pair //swap之前要求先初始化pair合约
+    //param:
+    //  amount:每次转换获得的token数量
+    //  path:最优的转换路径，比如要A换成B，但是A-C-D-B这个转换路径得到的B的数量更多，这种情况，path就是这四个token
+    //  关于最优的转换路径：https://mp.weixin.qq.com/s?__biz=MzA5OTI1NDE0Mw==&mid=2652494325&idx=1&sn=59f0017b10da7488d4f262b6177243b7&chksm=8b6853e5bc1fdaf37b191db6eafc4e3625d09001926a2cde625775a76ad986732a2db9218069&token=1269134064&lang=zh_CN&scene=21#wechat_redirect
+    //  _to:转换后的转账地址
     function _swap(uint[] memory amounts, address[] memory path, address _to) internal virtual {
         for (uint i; i < path.length - 1; i++) {
             (address input, address output) = (path[i], path[i + 1]);
             (address token0,) = UniswapV2Library.sortTokens(input, output);
             uint amountOut = amounts[i + 1];
+            //这里的amount0Out、amount1Out表示转换获得的token0和token1(这里的0、1是按照地址排序后的)的数量，一般情况下一个为0，一个不为0。flash swap的情况下会两个都不为0
             (uint amount0Out, uint amount1Out) = input == token0 ? (uint(0), amountOut) : (amountOut, uint(0));
+            
+            //比如这里A换成C，但是转换得到的C，是给了C-D的合约。如果是最后一次转换，那么就是_to得到最后的token
             address to = i < path.length - 2 ? UniswapV2Library.pairFor(factory, output, path[i + 2]) : _to;
+            //调用pair合约的转换
             IUniswapV2Pair(UniswapV2Library.pairFor(factory, input, output)).swap(
                 amount0Out, amount1Out, to, new bytes(0)
             );
         }
     }
+
+    //ERC20的token之间交换
+    //Param:
+    //  amountIn:交易的输入的token数量
+    //  amountOutMin:获得的最小的token数量
+    //  path:完成交换的路径
+    //  to:得到token的地址
+    //  deadline:交易最后完成时间
     function swapExactTokensForTokens(
         uint amountIn,
         uint amountOutMin,
@@ -344,9 +364,12 @@ contract UniswapV2Router02 is IUniswapV2Router02 {
 
     // **** SWAP (supporting fee-on-transfer tokens) ****
     // requires the initial amount to have already been sent to the first pair
+    //支持转账燃烧的token
+    //swap之前需要先初始化pair
     function _swapSupportingFeeOnTransferTokens(address[] memory path, address _to) internal virtual {
         for (uint i; i < path.length - 1; i++) {
             (address input, address output) = (path[i], path[i + 1]);
+            //根据Input和Output的token，得到pair
             (address token0,) = UniswapV2Library.sortTokens(input, output);
             IUniswapV2Pair pair = IUniswapV2Pair(UniswapV2Library.pairFor(factory, input, output));
             uint amountInput;

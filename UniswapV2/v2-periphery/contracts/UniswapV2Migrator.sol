@@ -8,6 +8,8 @@ import './interfaces/V1/IUniswapV1Exchange.sol';
 import './interfaces/IUniswapV2Router01.sol';
 import './interfaces/IERC20.sol';
 
+
+//这个主要用来将流动性从V1迁移到V2
 contract UniswapV2Migrator is IUniswapV2Migrator {
     IUniswapV1Factory immutable factoryV1;
     IUniswapV2Router01 immutable router;
