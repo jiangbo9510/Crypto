@@ -40,25 +40,40 @@ library UniswapV2Library {
     }
 
     // given an input amount of an asset and pair reserves, returns the maximum output amount of the other asset
+    // 输入传入的token数量，返回可以得到最大的token数量
     function getAmountOut(uint amountIn, uint reserveIn, uint reserveOut) internal pure returns (uint amountOut) {
         require(amountIn > 0, 'UniswapV2Library: INSUFFICIENT_INPUT_AMOUNT');
         require(reserveIn > 0 && reserveOut > 0, 'UniswapV2Library: INSUFFICIENT_LIQUIDITY');
-        uint amountInWithFee = amountIn.mul(997);
+        uint amountInWithFee = amountIn.mul(997);   //这里的003是手续费
+        //公式 (reserveIn*1000+amountIn*997)(reserveOut-amountOut) = reserveIn*reserveOut*1000
+        //所以 amountOut = reserveOut - (reserveIn*reserveOut*1000)/(reserveIn*1000+amountIn*997)
+        //也就是 amountOut = (reserveOut*reserveIn*1000+reserveOut*amountInWithFee - reserveIn*reserveOut*1000)/(reserveIn*1000+amountInWithFee)
+        //也就是 amountOut = (reserveOut*amountInWithFee)/(reserveIn*1000+amountInWithFee)
         uint numerator = amountInWithFee.mul(reserveOut);
         uint denominator = reserveIn.mul(1000).add(amountInWithFee);
         amountOut = numerator / denominator;
     }
 
     // given an output amount of an asset and pair reserves, returns a required input amount of the other asset
+    // 计算需要输入的token
     function getAmountIn(uint amountOut, uint reserveIn, uint reserveOut) internal pure returns (uint amountIn) {
         require(amountOut > 0, 'UniswapV2Library: INSUFFICIENT_OUTPUT_AMOUNT');
         require(reserveIn > 0 && reserveOut > 0, 'UniswapV2Library: INSUFFICIENT_LIQUIDITY');
         uint numerator = reserveIn.mul(amountOut).mul(1000);
         uint denominator = reserveOut.sub(amountOut).mul(997);
+        //公式 (reserveIn + amountIn)(reserveOut - amountOut) = reserveIn*reserveOut
+        //amoutInAfterFee = amountIn*997
+        //amountIn*997 = (reserveIn*reserveOut)/(reserveOut - amountOut) - reserveIn
+        //          = (reserveIn*reserveOut - (reserveOut - amountOut)*reserveIn)/(reserveOut - amountOut)
+        //          = (reserveIn*reserveOut - reserveOut*reserveIn + amountOut*reserveIn)/(reserveOut - amountOut)
+        //          = amountOut*reserveIn*1000/(reserveOut - amountOut)
+
+        //amoutIn = amountOut*reserveIn*1000/((reserveOut - amountOut)*997)
         amountIn = (numerator / denominator).add(1);
     }
 
     // performs chained getAmountOut calculations on any number of pairs
+    // 计算最后得到的token数量
     function getAmountsOut(address factory, uint amountIn, address[] memory path) internal view returns (uint[] memory amounts) {
         require(path.length >= 2, 'UniswapV2Library: INVALID_PATH');
         amounts = new uint[](path.length);
@@ -73,7 +88,7 @@ library UniswapV2Library {
     function getAmountsIn(address factory, uint amountOut, address[] memory path) internal view returns (uint[] memory amounts) {
         require(path.length >= 2, 'UniswapV2Library: INVALID_PATH');
         amounts = new uint[](path.length);
-        amounts[amounts.length - 1] = amountOut;
+        amounts[amounts.length - 1] = amountOut;    //通过最后的交易得到的token，得到前一步需要输入的token
         for (uint i = path.length - 1; i > 0; i--) {
             (uint reserveIn, uint reserveOut) = getReserves(factory, path[i - 1], path[i]);
             amounts[i - 1] = getAmountIn(amounts[i], reserveIn, reserveOut);

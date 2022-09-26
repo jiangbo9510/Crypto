@@ -260,7 +260,7 @@ contract UniswapV2Router02 is IUniswapV2Router02 {
         }
     }
 
-    //ERC20的token之间交换
+    //ERC20的token之间交换，支付的数量一定，得到的不一定
     //Param:
     //  amountIn:交易的输入的token数量
     //  amountOutMin:获得的最小的token数量
@@ -274,13 +274,20 @@ contract UniswapV2Router02 is IUniswapV2Router02 {
         address to,
         uint deadline
     ) external virtual override ensure(deadline) returns (uint[] memory amounts) {
+        //计算兑换路径可以得到的token数量
         amounts = UniswapV2Library.getAmountsOut(factory, amountIn, path);
+        //最后得到的要大于amountOutMin
         require(amounts[amounts.length - 1] >= amountOutMin, 'UniswapV2Router: INSUFFICIENT_OUTPUT_AMOUNT');
+        //转入token到第一个合约
         TransferHelper.safeTransferFrom(
             path[0], msg.sender, UniswapV2Library.pairFor(factory, path[0], path[1]), amounts[0]
         );
+        //开始交易
         _swap(amounts, path, to);
     }
+
+
+    //ERC20交易，但是支付的token不定，得到的token是一定的
     function swapTokensForExactTokens(
         uint amountOut,
         uint amountInMax,
@@ -288,13 +295,19 @@ contract UniswapV2Router02 is IUniswapV2Router02 {
         address to,
         uint deadline
     ) external virtual override ensure(deadline) returns (uint[] memory amounts) {
+        //计算要得到的amountOut的token，需要的token
         amounts = UniswapV2Library.getAmountsIn(factory, amountOut, path);
+        //得到的token不能高于amountInMax
         require(amounts[0] <= amountInMax, 'UniswapV2Router: EXCESSIVE_INPUT_AMOUNT');
         TransferHelper.safeTransferFrom(
-            path[0], msg.sender, UniswapV2Library.pairFor(factory, path[0], path[1]), amounts[0]
+            path[0], msg.sender, UniswapV2Library.pairFor(factory, path[0], path[1]), amounts[0]//这个是输入的token
         );
+        //开始交易
         _swap(amounts, path, to);
     }
+
+
+    //ERC20和ETH交易对，用固定ETH交易获得token
     function swapExactETHForTokens(uint amountOutMin, address[] calldata path, address to, uint deadline)
         external
         virtual
@@ -310,6 +323,8 @@ contract UniswapV2Router02 is IUniswapV2Router02 {
         assert(IWETH(WETH).transfer(UniswapV2Library.pairFor(factory, path[0], path[1]), amounts[0]));
         _swap(amounts, path, to);
     }
+
+    //ERC20和ETH交易对，用token交换固定的ETH
     function swapTokensForExactETH(uint amountOut, uint amountInMax, address[] calldata path, address to, uint deadline)
         external
         virtual
@@ -327,6 +342,8 @@ contract UniswapV2Router02 is IUniswapV2Router02 {
         IWETH(WETH).withdraw(amounts[amounts.length - 1]);
         TransferHelper.safeTransferETH(to, amounts[amounts.length - 1]);
     }
+
+    //ERC20和ETH交易对，用固定的token交换ETH
     function swapExactTokensForETH(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline)
         external
         virtual
@@ -344,6 +361,8 @@ contract UniswapV2Router02 is IUniswapV2Router02 {
         IWETH(WETH).withdraw(amounts[amounts.length - 1]);
         TransferHelper.safeTransferETH(to, amounts[amounts.length - 1]);
     }
+
+    //ERC20和ETH交易对，用ETH交换固定的token
     function swapETHForExactTokens(uint amountOut, address[] calldata path, address to, uint deadline)
         external
         virtual
@@ -358,7 +377,7 @@ contract UniswapV2Router02 is IUniswapV2Router02 {
         IWETH(WETH).deposit{value: amounts[0]}();
         assert(IWETH(WETH).transfer(UniswapV2Library.pairFor(factory, path[0], path[1]), amounts[0]));
         _swap(amounts, path, to);
-        // refund dust eth, if any
+        // refund dust eth, if any //退了多余的ETH
         if (msg.value > amounts[0]) TransferHelper.safeTransferETH(msg.sender, msg.value - amounts[0]);
     }
 
@@ -473,6 +492,7 @@ contract UniswapV2Router02 is IUniswapV2Router02 {
         return UniswapV2Library.getAmountIn(amountOut, reserveIn, reserveOut);
     }
 
+    //计算通过兑换路径后可以得到的token数量
     function getAmountsOut(uint amountIn, address[] memory path)
         public
         view
