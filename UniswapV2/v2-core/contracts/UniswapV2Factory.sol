@@ -4,8 +4,8 @@ import './interfaces/IUniswapV2Factory.sol';
 import './UniswapV2Pair.sol';
 
 contract UniswapV2Factory is IUniswapV2Factory {
-    address public feeTo;
-    address public feeToSetter;
+    address public feeTo;   //合约抽成地址
+    address public feeToSetter; //可以设置合约抽成地址的地址
 
     mapping(address => mapping(address => address)) public getPair;
     address[] public allPairs;

@@ -393,17 +393,23 @@ contract UniswapV2Router02 is IUniswapV2Router02 {
             IUniswapV2Pair pair = IUniswapV2Pair(UniswapV2Library.pairFor(factory, input, output));
             uint amountInput;
             uint amountOutput;
+            //https://soliditydeveloper.com/stacktoodeep 原因见这个，主要是函数内使用的变量不能超过16个
             { // scope to avoid stack too deep errors
             (uint reserve0, uint reserve1,) = pair.getReserves();
             (uint reserveInput, uint reserveOutput) = input == token0 ? (reserve0, reserve1) : (reserve1, reserve0);
+            //amountInput 是输入代币数量
+            //amountOutput 是计算可以获得的数量
             amountInput = IERC20(input).balanceOf(address(pair)).sub(reserveInput);
             amountOutput = UniswapV2Library.getAmountOut(amountInput, reserveInput, reserveOutput);
             }
             (uint amount0Out, uint amount1Out) = input == token0 ? (uint(0), amountOutput) : (amountOutput, uint(0));
             address to = i < path.length - 2 ? UniswapV2Library.pairFor(factory, output, path[i + 2]) : _to;
+            //按照兑换路径，逐次兑换
             pair.swap(amount0Out, amount1Out, to, new bytes(0));
         }
     }
+
+    //用固定的ERC20交换另一种ERC20token，支持token交易税
     function swapExactTokensForTokensSupportingFeeOnTransferTokens(
         uint amountIn,
         uint amountOutMin,
@@ -411,16 +417,22 @@ contract UniswapV2Router02 is IUniswapV2Router02 {
         address to,
         uint deadline
     ) external virtual override ensure(deadline) {
+        //从调用方转入amountIn个token到pair合约
         TransferHelper.safeTransferFrom(
             path[0], msg.sender, UniswapV2Library.pairFor(factory, path[0], path[1]), amountIn
         );
+        //记录to地址的outToken数量
         uint balanceBefore = IERC20(path[path.length - 1]).balanceOf(to);
+        //开始交易
         _swapSupportingFeeOnTransferTokens(path, to);
         require(
+            //to地址得到的token，需要大于用户可以接受的最小值
             IERC20(path[path.length - 1]).balanceOf(to).sub(balanceBefore) >= amountOutMin,
             'UniswapV2Router: INSUFFICIENT_OUTPUT_AMOUNT'
         );
     }
+
+    //用固定的ETH交换token，支持token交易税
     function swapExactETHForTokensSupportingFeeOnTransferTokens(
         uint amountOutMin,
         address[] calldata path,
@@ -435,7 +447,9 @@ contract UniswapV2Router02 is IUniswapV2Router02 {
     {
         require(path[0] == WETH, 'UniswapV2Router: INVALID_PATH');
         uint amountIn = msg.value;
+        //交换为WETH
         IWETH(WETH).deposit{value: amountIn}();
+        //把WETH转给pair合约
         assert(IWETH(WETH).transfer(UniswapV2Library.pairFor(factory, path[0], path[1]), amountIn));
         uint balanceBefore = IERC20(path[path.length - 1]).balanceOf(to);
         _swapSupportingFeeOnTransferTokens(path, to);
@@ -444,6 +458,8 @@ contract UniswapV2Router02 is IUniswapV2Router02 {
             'UniswapV2Router: INSUFFICIENT_OUTPUT_AMOUNT'
         );
     }
+
+    //用固定的token交换ETH，支持token交易税
     function swapExactTokensForETHSupportingFeeOnTransferTokens(
         uint amountIn,
         uint amountOutMin,
@@ -457,6 +473,7 @@ contract UniswapV2Router02 is IUniswapV2Router02 {
         ensure(deadline)
     {
         require(path[path.length - 1] == WETH, 'UniswapV2Router: INVALID_PATH');
+        //token转账到pair合约
         TransferHelper.safeTransferFrom(
             path[0], msg.sender, UniswapV2Library.pairFor(factory, path[0], path[1]), amountIn
         );
@@ -464,14 +481,17 @@ contract UniswapV2Router02 is IUniswapV2Router02 {
         uint amountOut = IERC20(WETH).balanceOf(address(this));
         require(amountOut >= amountOutMin, 'UniswapV2Router: INSUFFICIENT_OUTPUT_AMOUNT');
         IWETH(WETH).withdraw(amountOut);
+        //ETH转给调用方
         TransferHelper.safeTransferETH(to, amountOut);
     }
 
     // **** LIBRARY FUNCTIONS ****
+    //计算得到的B的数量，amountB = amountA.mul(reserveB) / reserveA，用在添加流动性
     function quote(uint amountA, uint reserveA, uint reserveB) public pure virtual override returns (uint amountB) {
         return UniswapV2Library.quote(amountA, reserveA, reserveB);
     }
 
+    //计算固定输入可以获得的输出
     function getAmountOut(uint amountIn, uint reserveIn, uint reserveOut)
         public
         pure
@@ -482,6 +502,7 @@ contract UniswapV2Router02 is IUniswapV2Router02 {
         return UniswapV2Library.getAmountOut(amountIn, reserveIn, reserveOut);
     }
 
+    //计算固定的输出，应该输入的数量
     function getAmountIn(uint amountOut, uint reserveIn, uint reserveOut)
         public
         pure
@@ -503,6 +524,7 @@ contract UniswapV2Router02 is IUniswapV2Router02 {
         return UniswapV2Library.getAmountsOut(factory, amountIn, path);
     }
 
+    //计算通过兑换路径后应该输入的token数量
     function getAmountsIn(uint amountOut, address[] memory path)
         public
         view
