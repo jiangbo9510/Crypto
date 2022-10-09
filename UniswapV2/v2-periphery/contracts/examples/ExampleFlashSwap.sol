@@ -24,7 +24,7 @@ contract ExampleFlashSwap is IUniswapV2Callee {
     // but it's not possible because it requires a call to the v1 factory, which takes too much gas
     receive() external payable {}
 
-    //加了个触发接口
+    //加了个触发接口 https://github.com/t4sk/defi-by-example
     function testFlashSwap(address _tokenBorrow, uint _amount) external {
         address pair = IUniswapV2Factory(FACTORY).getPair(_tokenBorrow, WETH);
         require(pair != address(0), "!pair");
